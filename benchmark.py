@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from ue       import (UnifiedEmbedding, NonMultiplexedEmbedding, CollisionlessEmbedding,
                       prehash, prehash_split, build_vocabs, preencode)
 from models   import SimpleMLP, DCNV2LowRank
-from datasets import EmbDataset
+from data     import EmbDataset
 from train    import train_model, evaluate
 
 
@@ -85,4 +85,3 @@ def run_dataset(
         }
 
     return results
-    

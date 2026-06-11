@@ -32,7 +32,7 @@ datasets/avazu.parquet and datasets/criteo.parquet. All subsequent runs load fro
 To pre-cache them without running a full experiment:
 
 ```
-python -c "from datasets import load_movielens, load_avazu, load_criteo; load_avazu(); load_criteo()"
+python -c "from data import load_movielens, load_avazu, load_criteo; load_avazu(); load_criteo()"
 ```
 
 If you have a local Avazu gz file, pass it with --avazu to skip the download entirely.

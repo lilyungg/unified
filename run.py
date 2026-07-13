@@ -18,7 +18,8 @@ def get_device() -> torch.device:
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--ml1m",     required=True)
+    p.add_argument("--ml1m",     default="ml-1m",
+                   help="path to ml-1m dir (only read when movielens is not skipped)")
     p.add_argument("--ml-labels", default="wang", choices=["wang", "ge3"],
                    help="movielens labels: wang = Wang et al. 2021 (1-2 -> 0, "
                         "4-5 -> 1, 3s removed, as the paper's pipeline); "
@@ -48,6 +49,11 @@ def parse_args():
                         "(default: paper value per dataset)")
     p.add_argument("--only",     default=None,
                    help="run only experiments whose name contains this substring")
+    p.add_argument("--with-mlp", action="store_true",
+                   help="also train the plain-MLP arm (off by default; DCN only, "
+                        "the paper has no MLP arm)")
+    p.add_argument("--workers",  type=int, default=4,
+                   help="DataLoader workers (raise to 8-16 on many-core servers)")
     p.add_argument("--dropout",  type=float, default=0.0,
                    help="dropout in the DCN DNN stack (paper has none)")
     p.add_argument("--wd",       type=float, default=1e-5,
@@ -114,6 +120,8 @@ def process_dataset(name: str, loaded: tuple, args, device, run_ts: str,
             seed       = args.seed,
             eval_test_epochs = args.paper_protocol,
             dense      = dense,
+            with_mlp   = args.with_mlp,
+            num_workers = args.workers,
         )
 
     (out_dir / f"{run_ts}_{name}.json").write_text(

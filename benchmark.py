@@ -57,9 +57,10 @@ def table_report(name: str, df: pl.DataFrame, budget: float = 1.0) -> dict:
 
 
 def _make_loaders(data: np.ndarray, labels: np.ndarray,
-                  tr, va, te, batch_size: int, dense: np.ndarray = None) -> tuple:
-    kw = dict(num_workers=4, pin_memory=torch.cuda.is_available(),
-              persistent_workers=True)
+                  tr, va, te, batch_size: int, dense: np.ndarray = None,
+                  num_workers: int = 4) -> tuple:
+    kw = dict(num_workers=num_workers, pin_memory=torch.cuda.is_available(),
+              persistent_workers=num_workers > 0)
     def ds(idx):
         return EmbDataset(data[idx], labels[idx],
                           dense[idx] if dense is not None else None)
@@ -93,6 +94,8 @@ def run_dataset(
     seed:       int   = 42,
     eval_test_epochs: bool = False,
     dense:      np.ndarray = None,
+    with_mlp:   bool  = False,
+    num_workers: int  = 4,
 ) -> dict:
     cfg        = DATASET_CFG[name]
     emb_dim    = cfg["emb_dim"]
@@ -113,23 +116,26 @@ def run_dataset(
         return DCNV2(emb, emb_out, num_cross=num_cross, dnn_dims=dnn_dims,
                      dropout=dropout, use_bn=use_bn)
 
-    specs = [
-        ("Non-multiplex + MLP", "nm",   lambda: SimpleMLP(
-            NonMultiplexedEmbedding(vs, emb_levels, emb_dim), emb_out)),
-        ("Non-multiplex + DCN", "nm",   lambda: dcn(
-            NonMultiplexedEmbedding(vs, emb_levels, emb_dim))),
-        ("Multiplex + MLP",     "hash", lambda: SimpleMLP(
-            UnifiedEmbedding(emb_levels, emb_dim), emb_out)),
-        ("Multiplex + DCN",     "hash", lambda: dcn(
-            UnifiedEmbedding(emb_levels, emb_dim))),
-    ]
+    def mlp(emb):
+        return SimpleMLP(emb, emb_out)
+
+    # DCN only by default (the paper has no MLP arm); --with-mlp adds it back
+    def make_emb(kind):
+        if kind == "nm":   return NonMultiplexedEmbedding(vs, emb_levels, emb_dim)
+        if kind == "hash": return UnifiedEmbedding(emb_levels, emb_dim)
+        return CollisionlessEmbedding(vs, emb_dim)
+
+    methods = [("Non-multiplex", "nm"), ("Multiplex", "hash")]
     if include_collisionless:
-        specs += [
-            ("Collisionless + MLP", "cl", lambda: SimpleMLP(
-                CollisionlessEmbedding(vs, emb_dim), emb_out)),
-            ("Collisionless + DCN", "cl", lambda: dcn(
-                CollisionlessEmbedding(vs, emb_dim))),
-        ]
+        methods.append(("Collisionless", "cl"))
+
+    specs = []
+    for label, kind in methods:
+        specs.append((f"{label} + DCN", kind,
+                      lambda k=kind: dcn(make_emb(k))))
+        if with_mlp:
+            specs.append((f"{label} + MLP", kind,
+                          lambda k=kind: mlp(make_emb(k))))
     if only:
         exact = [s for s in specs if only.lower() == s[0].lower()]
         specs = exact or [s for s in specs if only.lower() in s[0].lower()]
@@ -142,14 +148,14 @@ def run_dataset(
     if "hash" in needed:
         hash_data = np.concatenate(
             [prehash(df[c].to_numpy(), (0,), emb_levels, feature_id=c) for c in cols], axis=1)
-        loaders["hash"] = _make_loaders(hash_data, labels, tr, va, te, batch_size, dense)
+        loaders["hash"] = _make_loaders(hash_data, labels, tr, va, te, batch_size, dense, num_workers)
     if "nm" in needed:
         nm_mod = NonMultiplexedEmbedding(vs, emb_levels, emb_dim)
         nm_data = prehash_split(df, cols, nm_mod.levels)
-        loaders["nm"] = _make_loaders(nm_data, labels, tr, va, te, batch_size, dense)
+        loaders["nm"] = _make_loaders(nm_data, labels, tr, va, te, batch_size, dense, num_workers)
     if "cl" in needed:
         cl_data = preencode(df, cols, vocabs)
-        loaders["cl"] = _make_loaders(cl_data, labels, tr, va, te, batch_size, dense)
+        loaders["cl"] = _make_loaders(cl_data, labels, tr, va, te, batch_size, dense, num_workers)
 
     results = {}
     for exp_name, kind, make_model in specs:

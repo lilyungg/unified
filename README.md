@@ -66,6 +66,17 @@ python run.py --ml1m /path/to/ml-1m --fast
 python run.py --ml1m /path/to/ml-1m
 ```
 
+By default only the DCN arm trains (the paper has no MLP arm); pass `--with-mlp`
+to add it back. On a GPU server, `run_server.sh` wraps the whole Avazu/Criteo
+pipeline (download → prepare → sweep):
+
+```
+bash run_server.sh setup      # venv + deps
+bash run_server.sh download   # Criteo tarball (Avazu via Kaggle CLI — see script)
+bash run_server.sh smoke      # 1M-row sanity check
+bash run_server.sh all        # prepare + full Criteo & Avazu sweeps
+```
+
 ### Single dataset
 
 ```
@@ -90,6 +101,8 @@ python run.py --ml1m /path/to/ml-1m --skip movielens avazu  # Criteo only
 --lr        learning rate (per-dataset default: movielens 1e-3, others 2e-4)
 --cross     number of DCN cross layers (default: paper value per dataset)
 --dnn       DNN widths, comma-separated (default: paper value per dataset)
+--with-mlp  also train the plain-MLP arm (off by default; DCN only)
+--workers   DataLoader workers, default 4 (raise to 8-16 on big servers)
 --dropout   dropout in the DNN stack, default 0 (paper has none)
 --bn        enable BatchNorm (off by default; costs ~0.5-1 AUC points)
 --wd        Adam weight decay, default 1e-5

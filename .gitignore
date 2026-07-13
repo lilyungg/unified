@@ -1,0 +1,13 @@
+# Python env / caches
+.venv/
+__pycache__/
+*.pyc
+
+# Claude artifacts
+.claude/
+CLAUDE.md
+
+# Data (regenerable — see README/DATASETS.md)
+ml-1m/
+ml-1m.zip
+datasets/

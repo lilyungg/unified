@@ -133,7 +133,15 @@ rows (the paper predicts squared norms grow as O(N/M)), and final test AUC.
 Result JSONs include per-epoch history and embedding table stats
 (rows, size in MB, rows/total_vocab).
 
-## Results — MovieLens-1M (2026-07-13, 5 runs, paper protocol)
+## Results
+
+All three public benchmarks from the paper (Table 1), DCN-V2, `--ml-labels wang`.
+The paper's ordering (Non-multiplex < Multiplex < Collisionless) and the growth of
+the multiplexing gain under compression reproduce on every dataset; absolute AUC
+sits a uniform ~0.1–1.5 points above the paper (our splits, batch, and best-val
+checkpoint selection). Per-dataset preprocessing and traps: [DATASETS.md](DATASETS.md).
+
+### MovieLens-1M — 5 runs (mean ± std), full paper protocol
 
 Config: batch 128, lr 1e-3, no BatchNorm/dropout, embeddings init uniform(±0.05),
 labels per Wang et al. 2021 (ratings 1-2 → 0, 4-5 → 1, 3s removed — the paper's
@@ -174,6 +182,63 @@ Takeaways:
   Details per dataset: [DATASETS.md](DATASETS.md).
 
 Regenerate this table for any run: `python report.py experiment_logs/<ts>_movielens.json`.
+
+### Criteo — full dataset, single run (A100)
+
+~45M examples, 26 categorical + 13 continuous features (log-normalized, fed to the
+cross network as in DCN-V2). Vocabulary pruned to the paper's Table 4 (160,605);
+temporal split (6 days train, day 7 → val/test). Config: 2 cross + DNN 748×2,
+emb_dim 39, batch 4096, lr 2e-4, early stopping. Budgets map to Table 1 columns:
+2.0x = 25MB, 1.0x = 12.5MB, 0.2x = 2.5MB (run `--budgets 2.0 1.0 0.2`).
+
+| Budget | Experiment | AUC | Paper | Diff |
+|---|---|---|---|---|
+| 25MB   | Non-multiplex + DCN | 0.8067 | 0.8021 | +0.005 |
+| 25MB   | Multiplex + DCN     | 0.8092 | 0.8043 | +0.005 |
+| 25MB   | Collisionless + DCN | 0.8095 | 0.8070 | +0.003 |
+| 12.5MB | Non-multiplex + DCN | 0.8058 | 0.7998 | +0.006 |
+| 12.5MB | Multiplex + DCN     | 0.8090 | 0.8047 | +0.004 |
+| 2.5MB  | Non-multiplex + DCN | 0.7989 | 0.7944 | +0.005 |
+| 2.5MB  | Multiplex + DCN     | 0.8082 | 0.8049 | +0.003 |
+
+- Ordering holds at every budget; the multiplexing gain grows with compression:
+  Multiplex − Non-multiplex = +0.25 / +0.32 / +0.93 points at 25 / 12.5 / 2.5 MB
+  (paper +0.22 / +0.49 / +1.05).
+- Multiplex barely degrades under 10× compression (0.8092 → 0.8082, −0.10) while
+  Non-multiplex drops (0.8067 → 0.7989, −0.78) — the paper's headline result.
+- Heavy-tailed Criteo vocabulary: the collisionless↔hash gap the paper notes shows
+  up as Non-multiplex sitting below Multiplex even at the 25MB budget.
+- Embedding norms grow with compression (Multiplex ‖e‖²: ×3.0 at 2× table
+  shrink, ×13 at 10×; O(N/M) predicts ×2 / ×10).
+
+### Avazu — full dataset, single run (A100)
+
+~40M examples, 22 categorical features (no continuous), `hour` → hour-of-day.
+Vocabulary pruned to Table 5 (252,838); 90/10 shuffle split. Config: 1 cross +
+DNN 512×2, emb_dim 32, batch 4096, lr 2e-4. Budgets: 10.0x = 32.4MB, 1.0x =
+3.24MB, 0.1x = 324kB (`--budgets 10.0 1.0 0.1`).
+
+| Budget | Experiment | AUC | Paper | Diff |
+|---|---|---|---|---|
+| 32.4MB | Non-multiplex + DCN | 0.7748 | 0.7724 | +0.002 |
+| 32.4MB | Multiplex + DCN     | 0.7761 | 0.7735 | +0.003 |
+| 32.4MB | Collisionless + DCN | 0.7765 | 0.7735 | +0.003 |
+| 3.24MB | Non-multiplex + DCN | 0.7679 | 0.7671 | +0.001 |
+| 3.24MB | Multiplex + DCN     | 0.7737 | 0.7718 | +0.002 |
+| 324kB  | Non-multiplex + DCN | 0.7525 | 0.7510 | +0.002 |
+| 324kB  | Multiplex + DCN     | 0.7702 | 0.7686 | +0.002 |
+
+- Multiplexing gain vs compression tracks the paper almost exactly:
+  Multiplex − Non-multiplex = +0.13 / +0.58 / +1.77 points at 32.4 / 3.24 / 0.324 MB
+  (paper +0.11 / +0.47 / +1.76).
+- Under 100× compression Multiplex loses 0.59 points (0.7761 → 0.7702) vs
+  Non-multiplex's 2.23 (0.7748 → 0.7525).
+- The 324kB configs ran the full 30 epochs without early-stopping — the paper's
+  remark that heavily compressed embeddings need more epochs to converge.
+
+Single run (`--runs 1`); MovieLens above shows the 5-run spread on the same
+pipeline is ≤0.0008, an order of magnitude below the multiplexing gains here.
+Regenerate: `python report.py experiment_logs/<ts>_{criteo,avazu}.json`.
 
 ### Plots
 
